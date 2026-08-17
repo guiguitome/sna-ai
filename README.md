@@ -1,49 +1,43 @@
-# Dynamic Graph Anomaly Detection in Financial Markets 📊🕸️
+# 📊 Detecção de Risco Sistêmico no Mercado de Fundos (CVM) via Machine Learning e Teoria dos Grafos
 
-Este projeto consiste em um motor de ponta a ponta (End-to-End) de **Engenharia de Dados e Machine Learning** desenvolvido para identificar padrões anômalos e riscos sistêmicos em fundos de investimento no Brasil. 
+Este projeto desenvolve uma pipeline de **Engenharia de Dados e Machine Learning (Aprendizado Não-Supervisionado)** para monitorar e detectar anomalias comportamentais no mercado brasileiro de fundos de investimento (dados da CVM). 
 
-Utilizando dados públicos da Comissão de Valores Mobiliários (CVM), o pipeline transforma milhões de registros estáticos de portfólios financeiros em **Redes Complexas Temporais (Grafos Direcionados)**, extraindo features topológicas para alimentar algoritmos não supervisionados de detecção de anomalias.
+Ao invés de analisar fotografias estáticas do mercado, o modelo avalia o comportamento temporal (*Strategy Drift*) dos ativos ao longo de 12 meses (Ago/2025 a Jul/2026), cruzando topologia de redes com um comitê de algoritmos de detecção de *outliers*.
 
----
+## 🎯 Objetivos Analíticos
 
-## 🎯 Objetivos do Projeto
+O monitoramento centralizado da rede foi dividido em duas esteiras independentes de risco sistêmico:
 
-O foco principal desta aplicação é monitorar o fluxo de capital e detectar preventivamente três grandes riscos de mercado:
+1.  **Efeito Manada (In-Degree Centrality):** Identifica fundos que atraíram ou perderam capital de forma abrupta e anômala em relação ao mercado, agindo como potenciais "Cisnes Negros" de atração de liquidez.
+2.  **Risco de Contágio (Out-Degree Centrality):** Mapeia distribuidores de capital (*Sources*) que alteraram drasticamente suas teses de alocação, gerando choques de liquidez de primeira ordem em fundos dependentes.
 
-*   **Risco de Concentração (Efeito Manada):** Identificar quando uma grande parcela do mercado passa a aportar capital massivamente em um mesmo ativo ou fundo simultaneamente.
-*   **Risco de Contágio (Vulnerabilidade em Cascata):** Mapear a rede de Fundos de Investimento em Cotas (FICs) para encontrar "nós pontes" (fundos centrais) que, em caso de iliquidez, poderiam quebrar múltiplos outros fundos dependentes.
-*   **Strategy Drift (Desvio de Estratégia):** Detectar mudanças bruscas e não padronizadas no comportamento de alocação de um fundo específico ao longo do tempo.
+## ⚙️ Arquitetura e Pipeline de Dados
 
----
+A base original de ~30.000 fundos ativos passou por um tratamento rigoroso para evitar ruídos estatísticos e o paradoxo de variância zero na geometria dos modelos espaciais:
 
-## ⚙️ Arquitetura e Etapas do Pipeline
+*   **Bifurcação de Escopo:** Separação das matrizes de 12 meses em `df_manada` (apenas entradas) e `df_contagio` (apenas saídas).
+*   **Limpeza de Matrizes Esparsas:** Remoção de nós isolados direcionalmente (*Target-only* e *Source-only*), reduzindo a base de Manada para 15.306 fundos e a de Contágio para 24.354 fundos. Isso garantiu a estabilização do cálculo de distância multivariável.
 
-O projeto está estruturado em 3 fases principais, garantindo escalabilidade e otimização de memória:
+## 🤖 O Comitê de Decisão (*Ensemble Learning*)
 
-### 1. Ingestão e Engenharia de Dados (ETL)
-*   **Extração:** Leitura em lote (`pathlib.glob`) do histórico mensal de composição de carteiras (Bloco 2) do portal de Dados Abertos da CVM.
-*   **Transformação e Limpeza:** 
-    *   Filtragem de colunas para reter apenas o núcleo da rede (`DT_COMPTC`, Source, Target e Peso Financeiro).
-    *   Aplicação de threshold de materialidade financeira (ex: `>= R$ 100.000,00`) para expurgo de resíduos contábeis e ruídos.
-*   **Consolidação:** Concatenação otimizada dos meses em um *DataFrame* temporal leve e estruturado.
+Para evitar o alto índice de falsos positivos comum em matrizes financeiras altamente esparsas, foi implementado um sistema de **Votação por Maioria (Majority Vote >= 2)** utilizando três "juízes" com perspectivas matemáticas distintas:
 
-### 2. Processamento Topológico (Teoria dos Grafos)
-*   **Fatiamento Temporal:** Agrupamento iterativo dos dados por mês para evitar a sobreposição irreal do tempo (*Dynamic Graphs*).
-*   **Construção da Rede:** Geração mensal de Grafos Direcionados (`nx.DiGraph`), onde:
-    *   **Nós (Nodes):** Representam os Fundos de Investimento e as Cotas alvo.
-    *   **Arestas (Edges):** Representam a direção do investimento (Source $\rightarrow$ Target).
-    *   **Pesos (Weights):** Representam o Valor de Mercado da posição.
-*   **Extração de Features:** Cálculo de métricas de centralidade (ex: *In-Degree Centrality*, *Betweenness Centrality*) para quantificar o grau de influência e popularidade de cada ativo na rede naquele mês específico.
+*   **Isolation Forest (`contamination=0.01`):** Avaliação macro. Isola anomalias cortando o espaço de dados de forma hierárquica e lidando bem com mudanças temporais bruscas (*Strategy Drift*).
+*   **Local Outlier Factor (LOF) (`n_neighbors=20`):** Avaliação micro. Foca na densidade local, detectando fundos que se descolaram exclusivamente do comportamento do seu próprio nicho/vizinhança.
+*   **One-Class SVM (`nu=0.01`, `kernel='rbf'`, `gamma='scale'`):** Avaliação de fronteira. Desenha limites geométricos não-lineares ao redor do comportamento "normal". Atuou como ponte de validação, sendo calibrado pelo comitê para ignorar flutuações de baixa variância.
 
-### 3. Machine Learning (Detecção de Anomalias)
-*   **Matriz de Features:** Transformação dos scores matemáticos do grafo em uma base tabular cronológica.
-*   **Modelagem Não Supervisionada:** Aplicação de algoritmos (como *Isolation Forest*) para analisar a evolução temporal das centralidades e apontar *outliers* de comportamento.
+## 📈 Resultados e Validação
 
----
+A aplicação da urna de apuração (consenso cruzado) filtrou os alarmes falsos de instabilidade topológica, revelando o quadro real de risco sistêmico do período:
 
-## 🛠️ Stack Tecnológico
+*   **Fundos validados com Efeito Manada:** 54 alvos críticos.
+*   **Fundos validados com Risco de Contágio:** 174 distribuidores anômalos.
 
-*   **Python:** Linguagem base do pipeline.
-*   **Pandas:** Ingestão de arquivos pesados, limpeza e manipulação tabular de alta performance.
-*   **NetworkX:** Construção das redes direcionadas e cálculo de matemática de grafos.
-*   **Scikit-Learn:** Algoritmos de Machine Learning para a detecção das anomalias na etapa final.
+O repositório inclui visualizações dessas apurações através de **Diagramas de Venn** (comprovando a eficiência da interseção do comitê) e gráficos de série temporal que ilustram o abismo matemático de um *Strategy Drift* comparado ao comportamento de um fundo estável.
+
+## 🚀 Limitações Técnicas e Próximos Passos (Future Work)
+
+O pipeline atual foca com sucesso na detecção de Risco de Contágio Direto (choques de liquidez de primeira ordem mapeados via *Out-Degree Centrality*). Para a evolução da arquitetura, planeja-se:
+
+*   **Implementação de *Betweenness Centrality*:** Adição de métricas de centralidade de intermediação para mapear fundos que atuam como "pontes" entre *clusters* distintos (ex: varejo e fundos imobiliários). Isso permitirá ao modelo rastrear não apenas quem engatilha o choque financeiro, mas prever colapsos estruturais e fragmentação da rede em caso de quebra dessas pontes.
+*   **Processamento Distribuído:** Escalar o cálculo de *Betweenness* (que exige roteamento completo entre todos os pares de nós) utilizando *clusters* com PySpark para suportar o processamento longitudinal sem gargalos de *hardware*.
